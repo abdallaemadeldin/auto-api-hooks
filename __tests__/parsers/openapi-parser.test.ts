@@ -221,4 +221,89 @@ describe('OpenAPI 3.x Parser', () => {
       expect(catOp!.tags).toEqual(['categories'])
     })
   })
+
+  describe('x-pagination vendor extension', () => {
+    it('parses x-pagination into PaginationInfo', async () => {
+      const specWithPagination = {
+        openapi: '3.0.3',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/items': {
+            get: {
+              operationId: 'listItems',
+              tags: ['items'],
+              'x-pagination': {
+                strategy: 'cursor',
+                pageParam: 'next_token',
+                nextPagePath: 'meta.nextToken',
+                itemsPath: 'records',
+              },
+              parameters: [
+                { name: 'next_token', in: 'query', schema: { type: 'string' } },
+              ],
+              responses: {
+                '200': {
+                  description: 'OK',
+                  content: {
+                    'application/json': {
+                      schema: { type: 'object', properties: { records: { type: 'array', items: { type: 'string' } } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }
+
+      const result = await parseSpec(specWithPagination as any)
+      const listItems = result.operations.find((o) => o.operationId === 'listItems')
+      expect(listItems).toBeDefined()
+      expect(listItems!.pagination).toBeDefined()
+      expect(listItems!.pagination!.strategy).toBe('cursor')
+      expect(listItems!.pagination!.pageParam).toBe('next_token')
+      expect(listItems!.pagination!.nextPagePath).toEqual(['meta', 'nextToken'])
+      expect(listItems!.pagination!.itemsPath).toEqual(['records'])
+    })
+
+    it('x-pagination takes priority over heuristic detection', async () => {
+      const specWithBoth = {
+        openapi: '3.0.3',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/items': {
+            get: {
+              operationId: 'listItems',
+              tags: ['items'],
+              'x-pagination': {
+                strategy: 'page-number',
+                pageParam: 'pg',
+                nextPagePath: 'pagination.totalPages',
+                itemsPath: 'entries',
+              },
+              parameters: [
+                { name: 'pg', in: 'query', schema: { type: 'integer' } },
+                { name: 'cursor', in: 'query', schema: { type: 'string' } },
+              ],
+              responses: {
+                '200': {
+                  description: 'OK',
+                  content: {
+                    'application/json': {
+                      schema: { type: 'object', properties: { entries: { type: 'array', items: { type: 'string' } } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }
+
+      const result = await parseSpec(specWithBoth as any)
+      const listItems = result.operations.find((o) => o.operationId === 'listItems')
+      expect(listItems!.pagination!.strategy).toBe('page-number')
+      expect(listItems!.pagination!.pageParam).toBe('pg')
+    })
+  })
 })

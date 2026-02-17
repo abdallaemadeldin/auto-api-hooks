@@ -202,6 +202,68 @@ export function createDeleteOperation(overrides?: Partial<ApiOperation>): ApiOpe
 }
 
 /**
+ * Create a GraphQL SUBSCRIPTION operation (no arguments).
+ */
+export function createSubscriptionOperation(overrides?: Partial<ApiOperation>): ApiOperation {
+  return {
+    operationId: 'petCreated',
+    summary: 'Notified when a pet is created',
+    method: 'SUBSCRIPTION',
+    path: 'petCreated',
+    tags: ['subscriptions'],
+    pathParams: [],
+    queryParams: [],
+    headerParams: [],
+    requestBody: undefined,
+    response: {
+      statusCode: 200,
+      contentType: 'application/json',
+      type: {
+        kind: 'object',
+        properties: [
+          { name: 'id', type: { kind: 'primitive', type: 'integer' }, required: true },
+          { name: 'name', type: { kind: 'primitive', type: 'string' }, required: true },
+        ],
+      },
+    },
+    deprecated: false,
+    ...overrides,
+  }
+}
+
+/**
+ * Create a GraphQL SUBSCRIPTION operation with arguments.
+ */
+export function createSubscriptionWithArgsOperation(overrides?: Partial<ApiOperation>): ApiOperation {
+  return {
+    operationId: 'onMessage',
+    summary: 'Subscribe to messages on a channel',
+    method: 'SUBSCRIPTION',
+    path: 'onMessage',
+    tags: ['subscriptions'],
+    pathParams: [],
+    queryParams: [
+      { name: 'channel', required: true, type: { kind: 'primitive', type: 'string' }, in: 'query' },
+    ],
+    headerParams: [],
+    requestBody: undefined,
+    response: {
+      statusCode: 200,
+      contentType: 'application/json',
+      type: {
+        kind: 'object',
+        properties: [
+          { name: 'id', type: { kind: 'primitive', type: 'string' }, required: true },
+          { name: 'text', type: { kind: 'primitive', type: 'string' }, required: true },
+        ],
+      },
+    },
+    deprecated: false,
+    ...overrides,
+  }
+}
+
+/**
  * Create a spec that has named types.
  */
 export function createSpecWithNamedTypes(): ApiSpec {

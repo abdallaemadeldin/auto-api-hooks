@@ -14,6 +14,8 @@ import type {
   ApiUnionType,
   ApiProperty,
   HttpMethod,
+  PaginationInfo,
+  PaginationStrategy,
 } from '../ir/types'
 import type { SpecParser, ParseOptions } from './types'
 
@@ -371,6 +373,40 @@ function generateOperationId(method: string, path: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// x-pagination vendor extension
+// ---------------------------------------------------------------------------
+
+function parseXPagination(
+  operationObj: Record<string, unknown>,
+): PaginationInfo | undefined {
+  const xPagination = operationObj['x-pagination']
+  if (!xPagination || typeof xPagination !== 'object') return undefined
+
+  const ext = xPagination as Record<string, unknown>
+  const strategy = ext.strategy as string | undefined
+  const pageParam = ext.pageParam as string | undefined
+
+  if (!strategy || !pageParam) return undefined
+
+  const validStrategies: PaginationStrategy[] = ['cursor', 'offset-limit', 'page-number']
+  if (!validStrategies.includes(strategy as PaginationStrategy)) return undefined
+
+  const nextPagePath = typeof ext.nextPagePath === 'string'
+    ? ext.nextPagePath.split('.')
+    : []
+  const itemsPath = typeof ext.itemsPath === 'string'
+    ? ext.itemsPath.split('.')
+    : []
+
+  return {
+    strategy: strategy as PaginationStrategy,
+    pageParam,
+    nextPagePath,
+    itemsPath,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Swagger 2.0 Parser
 // ---------------------------------------------------------------------------
 
@@ -492,7 +528,12 @@ export const swaggerParser: SpecParser = {
         const operationId = operationObj.operationId
           ?? generateOperationId(method, path)
 
-        operations.push({
+        // x-pagination vendor extension
+        const pagination = parseXPagination(
+          operationObj as unknown as Record<string, unknown>,
+        )
+
+        const operation: ApiOperation = {
           operationId,
           summary: operationObj.summary,
           method: method.toUpperCase() as HttpMethod,
@@ -504,7 +545,13 @@ export const swaggerParser: SpecParser = {
           requestBody,
           response,
           deprecated: operationObj.deprecated ?? false,
-        })
+        }
+
+        if (pagination) {
+          operation.pagination = pagination
+        }
+
+        operations.push(operation)
       }
     }
 

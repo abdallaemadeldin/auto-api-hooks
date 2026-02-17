@@ -39,6 +39,61 @@ describe('GraphQL Parser', () => {
       expect(mutationOps.length).toBe(3)
     })
 
+    it('creates Subscription operations with SUBSCRIPTION method', () => {
+      const subOps = spec.operations.filter((o) => o.method === 'SUBSCRIPTION')
+      // petCreated, petUpdated, onMessage
+      expect(subOps.length).toBe(3)
+    })
+
+    it('tags subscriptions as "subscriptions"', () => {
+      const subOps = spec.operations.filter((o) => o.method === 'SUBSCRIPTION')
+      for (const op of subOps) {
+        expect(op.tags).toContain('subscriptions')
+      }
+    })
+
+    describe('petCreated subscription', () => {
+      let op: ApiOperation
+
+      beforeAll(() => {
+        op = spec.operations.find((o) => o.operationId === 'petCreated')!
+      })
+
+      it('exists with SUBSCRIPTION method', () => {
+        expect(op).toBeDefined()
+        expect(op.method).toBe('SUBSCRIPTION')
+      })
+
+      it('has no arguments', () => {
+        expect(op.queryParams).toHaveLength(0)
+      })
+
+      it('has a response type', () => {
+        expect(op.response).toBeDefined()
+        expect(op.response.type).toBeDefined()
+      })
+    })
+
+    describe('petUpdated subscription with args', () => {
+      let op: ApiOperation
+
+      beforeAll(() => {
+        op = spec.operations.find((o) => o.operationId === 'petUpdated')!
+      })
+
+      it('exists with SUBSCRIPTION method', () => {
+        expect(op).toBeDefined()
+        expect(op.method).toBe('SUBSCRIPTION')
+      })
+
+      it('has id argument', () => {
+        expect(op.queryParams.length).toBeGreaterThanOrEqual(1)
+        const idParam = op.queryParams.find((p) => p.name === 'id')
+        expect(idParam).toBeDefined()
+        expect(idParam!.required).toBe(true)
+      })
+    })
+
     it('tags queries as "queries"', () => {
       const queryOps = spec.operations.filter((o) => o.method === 'QUERY')
       for (const op of queryOps) {
@@ -137,6 +192,20 @@ describe('GraphQL Parser', () => {
       })
     })
 
+    describe('subscription types', () => {
+      it('extracts Message type used by onMessage subscription', () => {
+        const messageType = spec.types.get('Message')
+        expect(messageType).toBeDefined()
+        expect(messageType!.kind).toBe('object')
+        if (messageType!.kind === 'object') {
+          const propNames = messageType!.properties.map((p) => p.name)
+          expect(propNames).toContain('id')
+          expect(propNames).toContain('text')
+          expect(propNames).toContain('createdAt')
+        }
+      })
+    })
+
     describe('Relay connection patterns', () => {
       it('extracts PetConnection type', () => {
         const connType = spec.types.get('PetConnection')
@@ -224,10 +293,11 @@ describe('GraphQL Parser', () => {
       expect(createInput!.kind).toBe('object')
     })
 
-    it('has the same operation count as SDL parsing', async () => {
+    it('has the same query+mutation count as SDL parsing', async () => {
       const sdlPath = path.resolve(__dirname, '../fixtures/schema.graphql')
       const sdlSpec = await parseSpec(sdlPath)
-      expect(spec.operations.length).toBe(sdlSpec.operations.length)
+      const sdlQM = sdlSpec.operations.filter((o) => o.method !== 'SUBSCRIPTION').length
+      expect(spec.operations.length).toBe(sdlQM)
     })
   })
 })

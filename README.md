@@ -37,6 +37,11 @@ Maintaining hand-written fetch logic, TypeScript interfaces, and data-fetching h
 - **React Query cache key factories** -- Following TanStack v5 best practices
 - **Hook name collision detection** -- Warns when two operations map to the same hook name, preventing silent overwrites
 - **Circular type reference handling** -- Zod schemas use `z.lazy()` automatically for self-referencing or mutually recursive types
+- **GraphQL subscription hooks** -- WebSocket-based real-time hooks generated from GraphQL `Subscription` type fields, with strategy-specific implementations (SWR's `useSWRSubscription`, React Query's `useQueryClient` + invalidation, or plain `useState`/`useEffect`)
+- **`x-pagination` vendor extension** -- Explicitly annotate pagination strategy in your OpenAPI spec when auto-detection isn't sufficient
+- **`--dry-run` mode** -- Preview all files that would be generated without writing anything to disk
+- **`--clean` flag** -- Automatically removes stale auto-generated files from previous runs that are no longer needed
+- **`--prettier` flag** -- Format generated files with Prettier using your project's existing configuration
 
 ## Quick Start
 
@@ -100,6 +105,9 @@ auto-api-hooks generate [options]
 | `--tag <tags...>` | No | All tags | Filter operations by tag (can specify multiple) |
 | `--verbose` | No | `false` | Enable verbose logging output |
 | `--silent` | No | `false` | Suppress all output except errors (ideal for CI pipelines) |
+| `--dry-run` | No | `false` | Preview files that would be generated without writing to disk |
+| `--clean` | No | `false` | Remove stale auto-generated files from output directory |
+| `--prettier` | No | `false` | Format generated files with Prettier (uses your project config) |
 
 ### Example Commands
 
@@ -159,6 +167,35 @@ npx auto-api-hooks generate \
   --fetcher react-query \
   --output ./src/hooks \
   --silent
+```
+
+**Dry run -- preview output without writing files:**
+
+```bash
+npx auto-api-hooks generate \
+  --spec ./openapi.yaml \
+  --fetcher react-query \
+  --dry-run
+```
+
+**Clean stale files from previous generations:**
+
+```bash
+npx auto-api-hooks generate \
+  --spec ./openapi.yaml \
+  --fetcher react-query \
+  --output ./src/hooks \
+  --clean
+```
+
+**Auto-format output with Prettier:**
+
+```bash
+npx auto-api-hooks generate \
+  --spec ./openapi.yaml \
+  --fetcher react-query \
+  --output ./src/hooks \
+  --prettier
 ```
 
 **Watch mode for development:**
@@ -265,6 +302,11 @@ src/hooks/
     get-posts.ts
     get-post.ts
     create-post.ts
+  subscriptions/        # GraphQL subscription hooks (when spec has Subscription type)
+    index.ts
+    pet-created.ts      # usePetCreated (WebSocket-based)
+    pet-updated.ts      # usePetUpdated (WebSocket-based)
+    on-message.ts       # useOnMessage (WebSocket-based, with variables)
   mocks/
     index.ts            # Mock barrel file
     data.ts             # Mock data factory functions
@@ -361,6 +403,7 @@ Full integration with TanStack React Query v5 including:
 - **`useMutation`** for POST/PUT/PATCH/DELETE operations
 - **`useInfiniteQuery`** for paginated endpoints (auto-detected)
 - **Cache key factories** per resource following v5 best practices
+- **Subscription hooks** with WebSocket + `useQueryClient` auto-invalidation for GraphQL subscriptions
 
 ```tsx
 import {
@@ -421,6 +464,7 @@ Integration with Vercel's SWR library:
 - **`useSWR`** for GET operations with automatic revalidation
 - **`useSWRMutation`** for write operations
 - **`useSWRInfinite`** for paginated endpoints (auto-detected)
+- **`useSWRSubscription`** for GraphQL subscriptions (WebSocket-based)
 
 ```tsx
 import { useGetUsers, useGetUsersInfinite, useCreateUser } from './hooks'
@@ -607,6 +651,148 @@ await generate({
 })
 ```
 
+### `x-pagination` Vendor Extension
+
+When auto-detection isn't sufficient, you can explicitly annotate pagination in your OpenAPI spec using the `x-pagination` vendor extension on a path item or operation:
+
+```yaml
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      x-pagination:
+        strategy: cursor           # 'cursor' | 'offset-limit' | 'page-number'
+        pageParam: after           # query param name for next page
+        nextPagePath: [meta, nextCursor]   # JSON path to the next page token in the response
+        itemsPath: [data]          # JSON path to the array of items in the response
+```
+
+The extension takes precedence over heuristic detection. All four fields are required:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `strategy` | `string` | Pagination strategy: `cursor`, `offset-limit`, or `page-number` |
+| `pageParam` | `string` | Name of the query parameter that controls page position |
+| `nextPagePath` | `string[]` | JSON path to the next-page token in the response body |
+| `itemsPath` | `string[]` | JSON path to the array of items in the response body |
+
+## GraphQL Subscription Hooks
+
+When your GraphQL schema defines a `Subscription` type, `auto-api-hooks` generates WebSocket-based real-time hooks grouped under a `subscriptions/` directory. Each fetcher strategy produces an idiomatic implementation.
+
+### fetch / axios (plain WebSocket)
+
+Uses `useState`, `useEffect`, and the native `WebSocket` API. Returns `{ data, error, isConnected, unsubscribe }`.
+
+```tsx
+import { usePetCreated } from './hooks'
+
+function PetFeed() {
+  const { data, error, isConnected, unsubscribe } = usePetCreated({ enabled: true })
+
+  return (
+    <div>
+      <p>Status: {isConnected ? 'Connected' : 'Disconnected'}</p>
+      {data && <p>New pet: {data.name}</p>}
+      <button onClick={unsubscribe}>Disconnect</button>
+    </div>
+  )
+}
+```
+
+### react-query (WebSocket + QueryClient)
+
+Uses `useQueryClient` to invalidate related queries when subscription data arrives. Tracks connection status as `'connecting' | 'connected' | 'disconnected' | 'error'`.
+
+```tsx
+import { usePetCreated } from './hooks'
+
+function PetFeed() {
+  const { data, error, status, unsubscribe } = usePetCreated({
+    enabled: true,
+    onData: (pet) => console.log('New pet:', pet.name),
+    onError: (err) => console.error(err),
+  })
+
+  return (
+    <div>
+      <p>Status: {status}</p>
+      {data && <p>Latest: {data.name}</p>}
+    </div>
+  )
+}
+```
+
+When a subscription message arrives, the hook automatically calls `queryClient.invalidateQueries()` for the related resource, keeping your cached queries fresh.
+
+### swr (`useSWRSubscription`)
+
+Uses SWR's native `useSWRSubscription` from `swr/subscription`, delivering data through the `next()` callback.
+
+```tsx
+import { usePetCreated } from './hooks'
+
+function PetFeed() {
+  const { data, error } = usePetCreated({ enabled: true })
+
+  return (
+    <div>
+      {error && <p>Error: {error.message}</p>}
+      {data && <p>Latest pet: {data.name}</p>}
+    </div>
+  )
+}
+```
+
+### Subscriptions with Arguments
+
+Subscription fields that accept arguments (e.g., `onMessage(channel: String!)`) generate hooks with a `variables` parameter:
+
+```tsx
+const { data } = useOnMessage({ variables: { channel: 'general' } })
+```
+
+## Dry Run Mode
+
+The `--dry-run` flag generates all files in memory and displays what would be written without making any changes to disk. This is useful for previewing output before committing to a generation:
+
+```bash
+npx auto-api-hooks generate \
+  --spec ./openapi.yaml \
+  --fetcher react-query \
+  --dry-run
+```
+
+The output shows each file path and its content, letting you review the generated hooks before writing them.
+
+## Stale File Cleanup
+
+The `--clean` flag removes auto-generated files from the output directory that are no longer produced by the current generation. This prevents orphaned hook files from accumulating when operations are removed from the spec.
+
+```bash
+npx auto-api-hooks generate \
+  --spec ./openapi.yaml \
+  --fetcher react-query \
+  --output ./src/hooks \
+  --clean
+```
+
+Only files containing the `// Auto-generated by auto-api-hooks` header are considered for removal. Hand-written files in the output directory are never touched.
+
+## Prettier Integration
+
+The `--prettier` flag automatically formats all generated files using your project's Prettier configuration. It dynamically imports Prettier from your project's `node_modules`:
+
+```bash
+npx auto-api-hooks generate \
+  --spec ./openapi.yaml \
+  --fetcher react-query \
+  --output ./src/hooks \
+  --prettier
+```
+
+If Prettier is not installed in your project, the flag is silently ignored and files are written unformatted. Your `.prettierrc`, `prettier.config.js`, or `package.json` Prettier configuration is automatically detected and applied.
+
 ## Supported Spec Formats
 
 ### OpenAPI 3.x
@@ -650,7 +836,7 @@ Mapping rules:
 |----------------|---------------------|
 | Query fields | `useQuery` / `useSWR` (GET-equivalent) |
 | Mutation fields | `useMutation` / `useSWRMutation` (POST-equivalent) |
-| Subscription fields | Included in operations (tagged as `subscriptions`) |
+| Subscription fields | WebSocket-based hooks: `useSWRSubscription` (SWR), `useEffect` + `useQueryClient` (React Query), or `useState`/`useEffect` (fetch/Axios) |
 | Object types | TypeScript interfaces |
 | Input types | TypeScript interfaces (used for arguments) |
 | Enum types | TypeScript string unions + Zod enums |
@@ -1107,6 +1293,21 @@ The generator warns you at build time with details about which operations collid
 
 **Can I use it programmatically in a build script?**
 Yes. Import `generate()` directly from `auto-api-hooks` and pass a parsed spec object or file path. It returns generated file contents in memory when `outputDir` is omitted.
+
+**Does it support GraphQL subscriptions?**
+Yes. GraphQL `Subscription` type fields are parsed and generate WebSocket-based real-time hooks. Each fetcher strategy produces an idiomatic implementation: `useSWRSubscription` for SWR, `useQueryClient` with invalidation for React Query, and plain `useState`/`useEffect` for fetch and Axios.
+
+**Can I explicitly mark an endpoint as paginated?**
+Yes. Add the `x-pagination` vendor extension to any operation in your OpenAPI spec to override auto-detection. This lets you specify the strategy, page parameter, next-page path, and items path explicitly.
+
+**What does `--dry-run` do?**
+It runs the full generation pipeline in memory and displays all files that would be written, without actually creating or modifying anything on disk. Useful for previewing output or running in CI validation checks.
+
+**What does `--clean` do?**
+It scans the output directory for files containing the auto-generated header and removes any that are no longer produced by the current generation. Hand-written files are never touched.
+
+**Does `--prettier` require Prettier to be installed?**
+`--prettier` dynamically imports Prettier from your project's `node_modules`. If Prettier is not installed, the flag is silently ignored and files are written unformatted.
 
 ## Support
 

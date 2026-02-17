@@ -34,6 +34,9 @@ program
   .option('--tag <tags...>', 'Only generate hooks for specific tags')
   .option('--verbose', 'Enable verbose logging', false)
   .option('--silent', 'Suppress all output except errors (ideal for CI)', false)
+  .option('--dry-run', 'Preview files that would be generated without writing to disk', false)
+  .option('--clean', 'Remove stale files from output directory that are no longer generated', false)
+  .option('--prettier', 'Format generated files with Prettier (uses your project config)', false)
   .action(async (opts) => {
     const {
       spec: specPath,
@@ -47,6 +50,9 @@ program
       tag: tags,
       verbose,
       silent,
+      dryRun,
+      clean,
+      prettier,
     } = opts
 
     if (silent) setSilent(true)
@@ -70,6 +76,9 @@ program
         mock: !!mock,
         infiniteQueries: infinite !== false,
         tags,
+        dryRun: !!dryRun,
+        clean: !!clean,
+        prettier: !!prettier,
       })
 
       if (watch) {
@@ -82,6 +91,9 @@ program
           mock: !!mock,
           infiniteQueries: infinite !== false,
           tags,
+          dryRun: !!dryRun,
+          clean: !!clean,
+          prettier: !!prettier,
         })
       }
     } catch (err) {
@@ -99,6 +111,9 @@ interface GenerateConfig {
   mock: boolean
   infiniteQueries: boolean
   tags?: string[]
+  dryRun: boolean
+  clean: boolean
+  prettier: boolean
 }
 
 async function runGenerate(config: GenerateConfig): Promise<void> {
@@ -136,9 +151,33 @@ async function runGenerate(config: GenerateConfig): Promise<void> {
     mockFiles = generateMockFiles(spec)
   }
 
-  // 4. Write all files
+  // 4. Collect all files
   const allFiles = [...hookFiles, ...mockFiles]
+
+  // Dry run mode: show what would be generated without writing
+  if (config.dryRun) {
+    const duration = Date.now() - startTime
+    logger.success(
+      `Dry run: ${pc.bold(String(allFiles.length))} files would be generated in ${pc.bold(config.outputDir)} (${duration}ms)`,
+    )
+    for (const file of allFiles) {
+      logger.info(`  ${pc.gray('→')} ${file.path}`)
+    }
+    return
+  }
+
+  // 5. Clean stale files (if enabled)
+  if (config.clean) {
+    await cleanStaleFiles(config.outputDir, allFiles)
+  }
+
+  // 6. Write all files
   await writeFiles(config.outputDir, allFiles)
+
+  // 7. Format with Prettier (if enabled)
+  if (config.prettier) {
+    await formatWithPrettier(config.outputDir, allFiles)
+  }
 
   const duration = Date.now() - startTime
   logger.success(
@@ -150,6 +189,107 @@ async function runGenerate(config: GenerateConfig): Promise<void> {
   logger.info(
     `  ${pc.cyan('Hooks:')} ${hookCount} | ${pc.cyan('Types:')} ${spec.types.size} | ${pc.cyan('Strategy:')} ${config.fetcher}${config.zod ? ` | ${pc.cyan('Zod:')} ✔` : ''}${config.mock ? ` | ${pc.cyan('Mocks:')} ✔` : ''}`,
   )
+}
+
+/**
+ * Format generated files with Prettier using the project's config.
+ * Requires `prettier` to be installed in the user's project.
+ */
+async function formatWithPrettier(
+  outputDir: string,
+  files: { path: string }[],
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prettier: any
+  try {
+    // Dynamic import — prettier is an optional peer dependency
+    const mod = 'prettier'
+    prettier = await import(/* webpackIgnore: true */ mod)
+  } catch {
+    logger.warn(
+      'Prettier not found in your project. Install it with: npm install -D prettier',
+    )
+    return
+  }
+
+  const { join } = await import('node:path')
+  const { readFile, writeFile } = await import('node:fs/promises')
+
+  let formatted = 0
+  for (const file of files) {
+    const fullPath = join(outputDir, file.path)
+    try {
+      const content = await readFile(fullPath, 'utf-8')
+      const config = await prettier.resolveConfig(fullPath)
+      const result = await prettier.format(content, {
+        ...config,
+        filepath: fullPath,
+      })
+      if (result !== content) {
+        await writeFile(fullPath, result, 'utf-8')
+        formatted++
+      }
+    } catch {
+      // Skip files that fail to format
+      logger.verbose(`Failed to format: ${file.path}`)
+    }
+  }
+
+  if (formatted > 0) {
+    logger.info(`Formatted ${pc.bold(String(formatted))} files with Prettier`)
+  }
+}
+
+/**
+ * Remove files from the output directory that are no longer generated.
+ * Only removes `.ts` files that have the auto-generated header.
+ */
+async function cleanStaleFiles(
+  outputDir: string,
+  freshFiles: { path: string }[],
+): Promise<void> {
+  const { readdir, readFile, unlink } = await import('node:fs/promises')
+  const { join, relative } = await import('node:path')
+
+  const freshSet = new Set(freshFiles.map((f) => f.path))
+  let removedCount = 0
+
+  async function walk(dir: string): Promise<void> {
+    let entries: import('node:fs').Dirent[]
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return // Directory doesn't exist yet
+    }
+
+    for (const entry of entries) {
+      const name = String(entry.name)
+      const fullPath = join(dir, name)
+      if (entry.isDirectory()) {
+        await walk(fullPath)
+      } else if (name.endsWith('.ts')) {
+        const relPath = relative(outputDir, fullPath)
+        if (!freshSet.has(relPath)) {
+          // Only remove files that were generated by us
+          try {
+            const content = await readFile(fullPath, 'utf-8')
+            if (content.startsWith('// Auto-generated by auto-api-hooks')) {
+              await unlink(fullPath)
+              logger.verbose(`Removed stale file: ${relPath}`)
+              removedCount++
+            }
+          } catch {
+            // Ignore read errors
+          }
+        }
+      }
+    }
+  }
+
+  await walk(outputDir)
+  if (removedCount > 0) {
+    logger.info(`Cleaned ${pc.bold(String(removedCount))} stale file${removedCount === 1 ? '' : 's'}`)
+  }
 }
 
 async function startWatchMode(specPath: string, config: GenerateConfig): Promise<void> {

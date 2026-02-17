@@ -6,6 +6,8 @@ import {
   createGetOperation,
   createPostOperation,
   createPaginatedOperation,
+  createSubscriptionOperation,
+  createSubscriptionWithArgsOperation,
 } from '../helpers'
 
 const defaultOptions: GeneratorOptions = {
@@ -132,6 +134,84 @@ describe('SwrGenerator', () => {
         (f) => f.path.includes('infinite') && f.path.startsWith('pets/'),
       )
       expect(infiniteFile).toBeUndefined()
+    })
+  })
+
+  describe('subscription operation hooks', () => {
+    it('generates useSWRSubscription hooks for subscription operations', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile).toBeDefined()
+      expect(hookFile!.content).toContain('useSWRSubscription')
+      expect(hookFile!.content).toContain('usePetCreated')
+    })
+
+    it('imports from swr/subscription', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain("from 'swr/subscription'")
+    })
+
+    it('uses WebSocket connection inside the subscribe function', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('WebSocket')
+    })
+
+    it('calls next() to deliver data to SWR', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('next(')
+    })
+
+    it('supports enabled option to prevent auto-connect', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('enabled === false')
+      expect(hookFile!.content).toContain('null')
+    })
+
+    it('accepts variables for subscriptions with args', () => {
+      const spec = createMockSpec([createSubscriptionWithArgsOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('variables')
+      expect(hookFile!.content).toContain('OnMessageParams')
+    })
+
+    it('does not generate useSWRMutation for subscriptions', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).not.toContain('useSWRMutation')
+    })
+
+    it('returns cleanup function for WebSocket close', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('ws.close()')
     })
   })
 

@@ -6,6 +6,8 @@ import {
   createGetOperation,
   createPostOperation,
   createDetailOperation,
+  createSubscriptionOperation,
+  createSubscriptionWithArgsOperation,
 } from '../helpers'
 
 const defaultOptions: GeneratorOptions = {
@@ -214,6 +216,50 @@ describe('FetchGenerator', () => {
       expect(warningCalls.length).toBe(0)
 
       warnSpy.mockRestore()
+    })
+  })
+
+  describe('subscription operation hooks', () => {
+    it('generates a subscription hook with WebSocket connection', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile).toBeDefined()
+      expect(hookFile!.content).toContain('WebSocket')
+      expect(hookFile!.content).toContain('usePetCreated')
+    })
+
+    it('includes data, error, isConnected, and unsubscribe in the result', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('data')
+      expect(hookFile!.content).toContain('error')
+      expect(hookFile!.content).toContain('isConnected')
+      expect(hookFile!.content).toContain('unsubscribe')
+    })
+
+    it('includes variables parameter for subscriptions with args', () => {
+      const spec = createMockSpec([createSubscriptionWithArgsOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('variables')
+      expect(hookFile!.content).toContain('OnMessageParams')
+    })
+
+    it('does not generate mutation hooks for subscription operations', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).not.toContain('mutate')
     })
   })
 

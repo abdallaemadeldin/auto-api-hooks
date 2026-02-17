@@ -95,6 +95,30 @@ describe('E2E: GraphQL -> SWR', () => {
     expect(typesFile!.content).toContain('PetStatus')
   })
 
+  it('generates subscription hooks from GraphQL subscriptions', async () => {
+    const files = await generate({
+      spec: specPath,
+      fetcher: 'swr',
+    })
+
+    // Should have a subscriptions directory
+    const subscriptionFiles = files.filter(f => f.path.startsWith('subscriptions/'))
+    expect(subscriptionFiles.length).toBeGreaterThan(0)
+
+    // petCreated -> usePetCreated
+    expect(files.some(f => f.content.includes('function usePetCreated'))).toBe(true)
+    // petUpdated -> usePetUpdated
+    expect(files.some(f => f.content.includes('function usePetUpdated'))).toBe(true)
+    // onMessage -> useOnMessage
+    expect(files.some(f => f.content.includes('function useOnMessage'))).toBe(true)
+
+    // Subscription hooks should use useSWRSubscription, not useSWRMutation
+    const subHook = files.find(f => f.content.includes('function usePetCreated'))
+    expect(subHook).toBeDefined()
+    expect(subHook!.content).toContain('useSWRSubscription')
+    expect(subHook!.content).not.toContain('useSWRMutation')
+  })
+
   it('generates barrel indexes for query and mutation groups', async () => {
     const files = await generate({
       spec: specPath,

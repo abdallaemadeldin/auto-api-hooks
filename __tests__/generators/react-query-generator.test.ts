@@ -7,6 +7,8 @@ import {
   createPostOperation,
   createDetailOperation,
   createPaginatedOperation,
+  createSubscriptionOperation,
+  createSubscriptionWithArgsOperation,
 } from '../helpers'
 
 const defaultOptions: GeneratorOptions = {
@@ -206,6 +208,77 @@ describe('ReactQueryGenerator', () => {
         (f) => f.path.includes('infinite') && f.path.startsWith('pets/'),
       )
       expect(infiniteFile).toBeUndefined()
+    })
+  })
+
+  describe('subscription operation hooks', () => {
+    it('generates a subscription hook with WebSocket and queryClient', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile).toBeDefined()
+      expect(hookFile!.content).toContain('WebSocket')
+      expect(hookFile!.content).toContain('useQueryClient')
+      expect(hookFile!.content).toContain('usePetCreated')
+    })
+
+    it('has status field with connection states', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain("'connecting'")
+      expect(hookFile!.content).toContain("'connected'")
+      expect(hookFile!.content).toContain("'disconnected'")
+    })
+
+    it('includes unsubscribe function', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('unsubscribe')
+    })
+
+    it('invalidates queries when subscription data arrives', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('invalidateQueries')
+    })
+
+    it('supports enabled option to prevent auto-connect', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('enabled')
+    })
+
+    it('accepts variables for subscriptions with args', () => {
+      const spec = createMockSpec([createSubscriptionWithArgsOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).toContain('variables')
+      expect(hookFile!.content).toContain('OnMessageParams')
+    })
+
+    it('does not generate useMutation for subscriptions', () => {
+      const spec = createMockSpec([createSubscriptionOperation()])
+      const files = generateHooks(spec, defaultOptions)
+      const hookFile = files.find(
+        (f) => f.path.startsWith('subscriptions/') && f.path !== 'subscriptions/index.ts',
+      )
+      expect(hookFile!.content).not.toContain('useMutation')
     })
   })
 

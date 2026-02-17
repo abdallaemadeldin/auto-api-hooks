@@ -12,6 +12,18 @@ type Mutation {
   createUser(input: CreateUserInput!): User!
 }
 
+type Subscription {
+  petCreated: Pet!
+  petUpdated(id: ID!): Pet!
+  onMessage(channel: String!): Message!
+}
+
+type Message {
+  id: ID!
+  text: String!
+  createdAt: String!
+}
+
 type Pet {
   id: ID!
   name: String!
