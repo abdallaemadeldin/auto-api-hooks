@@ -178,6 +178,45 @@ describe('FetchGenerator', () => {
     })
   })
 
+  describe('hook name collision detection', () => {
+    it('warns when two operations produce the same hook name', () => {
+      const warnSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      const spec = createMockSpec([
+        createGetOperation({ operationId: 'listPets' }),
+        createGetOperation({ operationId: 'listPets', path: '/v2/pets' }),
+      ])
+      generateHooks(spec, defaultOptions)
+
+      const warningCalls = warnSpy.mock.calls
+        .map((args) => args.join(' '))
+        .filter((msg) => msg.includes('collision'))
+
+      expect(warningCalls.length).toBeGreaterThan(0)
+      expect(warningCalls[0]).toContain('useListPets')
+
+      warnSpy.mockRestore()
+    })
+
+    it('does not warn when all hook names are unique', () => {
+      const warnSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      const spec = createMockSpec([
+        createGetOperation({ operationId: 'listPets' }),
+        createPostOperation({ operationId: 'createPet' }),
+      ])
+      generateHooks(spec, defaultOptions)
+
+      const warningCalls = warnSpy.mock.calls
+        .map((args) => args.join(' '))
+        .filter((msg) => msg.includes('collision'))
+
+      expect(warningCalls.length).toBe(0)
+
+      warnSpy.mockRestore()
+    })
+  })
+
   describe('zod integration', () => {
     it('imports from schemas when zod is enabled', () => {
       const spec = createMockSpec([createGetOperation()])

@@ -1,6 +1,6 @@
 {
   "name": "auto-api-hooks",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "Generate React Query hooks, SWR hooks, and TypeScript types from OpenAPI 3.x, Swagger 2.0, and GraphQL specs. API client code generator with Zod schema validation and MSW v2 mock server generation.",
   "license": "MIT",
   "repository": {
@@ -52,7 +52,6 @@
     "commander": "^12.1.0",
     "graphql": "^16.9.0",
     "picocolors": "^1.1.0",
-    "ts-morph": "^24.0.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {

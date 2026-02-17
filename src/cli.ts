@@ -6,7 +6,7 @@
  */
 import { Command } from 'commander'
 import pc from 'picocolors'
-import { logger, setVerbose } from './utils/logger'
+import { logger, setVerbose, setSilent } from './utils/logger'
 import { parseSpec } from './parsers/index'
 import { generateHooks } from './generators/index'
 import { generateMockFiles } from './mock-gen/index'
@@ -33,6 +33,7 @@ program
   .option('--no-infinite', 'Disable infinite query generation for paginated endpoints')
   .option('--tag <tags...>', 'Only generate hooks for specific tags')
   .option('--verbose', 'Enable verbose logging', false)
+  .option('--silent', 'Suppress all output except errors (ideal for CI)', false)
   .action(async (opts) => {
     const {
       spec: specPath,
@@ -45,9 +46,11 @@ program
       infinite,
       tag: tags,
       verbose,
+      silent,
     } = opts
 
-    if (verbose) setVerbose(true)
+    if (silent) setSilent(true)
+    if (verbose && !silent) setVerbose(true)
 
     // Validate fetcher strategy
     const validStrategies: FetcherStrategy[] = ['fetch', 'axios', 'react-query', 'swr']

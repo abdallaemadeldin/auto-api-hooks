@@ -12,26 +12,31 @@ export interface Logger {
 }
 
 let _verbose = false
+let _silent = false
 
 export function setVerbose(v: boolean): void {
   _verbose = v
 }
 
+export function setSilent(v: boolean): void {
+  _silent = v
+}
+
 export const logger: Logger = {
   info(message: string) {
-    console.log(pc.cyan('ℹ'), message)
+    if (!_silent) console.log(pc.cyan('ℹ'), message)
   },
   success(message: string) {
-    console.log(pc.green('✔'), message)
+    if (!_silent) console.log(pc.green('✔'), message)
   },
   warn(message: string) {
-    console.log(pc.yellow('⚠'), message)
+    if (!_silent) console.log(pc.yellow('⚠'), message)
   },
   error(message: string) {
     console.error(pc.red('✖'), message)
   },
   verbose(message: string) {
-    if (_verbose) {
+    if (_verbose && !_silent) {
       console.log(pc.gray('  ▸'), pc.gray(message))
     }
   },

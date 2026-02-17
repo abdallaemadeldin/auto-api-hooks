@@ -253,4 +253,88 @@ describe('emitZodSchemas', () => {
     expect(result).toContain('/* eslint-disable */')
     expect(result).toContain('/* tslint:disable */')
   })
+
+  describe('circular references', () => {
+    it('wraps direct circular refs with z.lazy()', () => {
+      // Category has a parent field that references itself
+      const spec = createMockSpec()
+      spec.types = new Map([
+        [
+          'Category',
+          {
+            kind: 'object' as const,
+            properties: [
+              { name: 'name', type: { kind: 'primitive' as const, type: 'string' as const }, required: true },
+              { name: 'parent', type: { kind: 'ref' as const, name: 'Category' }, required: false },
+            ],
+          },
+        ],
+      ])
+
+      const result = emitZodSchemas(spec)
+      expect(result).toContain('z.lazy(() => categorySchema)')
+    })
+
+    it('wraps mutually circular refs with z.lazy()', () => {
+      // User -> Post -> User (mutual cycle)
+      const spec = createMockSpec()
+      spec.types = new Map([
+        [
+          'User',
+          {
+            kind: 'object' as const,
+            properties: [
+              { name: 'name', type: { kind: 'primitive' as const, type: 'string' as const }, required: true },
+              { name: 'posts', type: { kind: 'array' as const, items: { kind: 'ref' as const, name: 'Post' } }, required: false },
+            ],
+          },
+        ],
+        [
+          'Post',
+          {
+            kind: 'object' as const,
+            properties: [
+              { name: 'title', type: { kind: 'primitive' as const, type: 'string' as const }, required: true },
+              { name: 'author', type: { kind: 'ref' as const, name: 'User' }, required: false },
+            ],
+          },
+        ],
+      ])
+
+      const result = emitZodSchemas(spec)
+      expect(result).toContain('z.lazy(() => postSchema)')
+      expect(result).toContain('z.lazy(() => userSchema)')
+    })
+
+    it('does not use z.lazy() for non-circular refs', () => {
+      // Address -> no cycle, just referenced by User
+      const spec = createMockSpec()
+      spec.types = new Map([
+        [
+          'Address',
+          {
+            kind: 'object' as const,
+            properties: [
+              { name: 'street', type: { kind: 'primitive' as const, type: 'string' as const }, required: true },
+            ],
+          },
+        ],
+        [
+          'User',
+          {
+            kind: 'object' as const,
+            properties: [
+              { name: 'name', type: { kind: 'primitive' as const, type: 'string' as const }, required: true },
+              { name: 'address', type: { kind: 'ref' as const, name: 'Address' }, required: false },
+            ],
+          },
+        ],
+      ])
+
+      const result = emitZodSchemas(spec)
+      // Should be a plain ref, not z.lazy
+      expect(result).toContain('addressSchema.optional()')
+      expect(result).not.toContain('z.lazy')
+    })
+  })
 })

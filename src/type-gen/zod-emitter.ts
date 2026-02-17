@@ -19,6 +19,89 @@ import type {
 import { toCamelCase } from '../utils/naming'
 
 // ---------------------------------------------------------------------------
+// Circular reference detection
+// ---------------------------------------------------------------------------
+
+/** Set of type names involved in cycles — their refs need z.lazy(). */
+let _circularTypes: Set<string> = new Set()
+
+/**
+ * Build a dependency graph and detect which named types are part of cycles.
+ * Any ref to a type in a cycle must use `z.lazy(() => schema)`.
+ */
+function detectCircularTypes(types: Map<string, ApiType>): Set<string> {
+  const deps = new Map<string, Set<string>>()
+
+  // Collect direct ref dependencies for each named type
+  for (const [name, type] of types) {
+    const refs = new Set<string>()
+    collectRefs(type, refs)
+    deps.set(name, refs)
+  }
+
+  // Find all types that participate in a cycle using DFS
+  const circular = new Set<string>()
+  const visited = new Set<string>()
+  const inStack = new Set<string>()
+
+  function dfs(name: string, path: string[]): void {
+    if (inStack.has(name)) {
+      // Found a cycle — mark every node in the cycle
+      const cycleStart = path.indexOf(name)
+      for (let i = cycleStart; i < path.length; i++) {
+        circular.add(path[i])
+      }
+      return
+    }
+    if (visited.has(name)) return
+    visited.add(name)
+    inStack.add(name)
+    path.push(name)
+
+    for (const dep of deps.get(name) ?? []) {
+      if (types.has(dep)) {
+        dfs(dep, path)
+      }
+    }
+
+    path.pop()
+    inStack.delete(name)
+  }
+
+  for (const name of types.keys()) {
+    dfs(name, [])
+  }
+
+  return circular
+}
+
+/** Recursively collect all ref names from a type. */
+function collectRefs(type: ApiType, refs: Set<string>): void {
+  switch (type.kind) {
+    case 'ref':
+      refs.add(type.name)
+      break
+    case 'object':
+      for (const prop of type.properties) {
+        collectRefs(prop.type, refs)
+      }
+      if (type.additionalProperties && typeof type.additionalProperties !== 'boolean') {
+        collectRefs(type.additionalProperties, refs)
+      }
+      break
+    case 'array':
+      collectRefs(type.items, refs)
+      break
+    case 'union':
+      for (const v of type.variants) {
+        collectRefs(v, refs)
+      }
+      break
+    // primitive and enum have no refs
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -30,20 +113,18 @@ import { toCamelCase } from '../utils/naming'
  * - A `const …Schema = z.…` for every named type in `spec.types`
  * - A response schema for every operation
  * - Re-exports of all schemas
+ *
+ * Circular type references are automatically wrapped with `z.lazy()`.
  */
 export function emitZodSchemas(spec: ApiSpec): string {
   const chunks: string[] = []
 
+  // Detect circular types before emitting
+  _circularTypes = detectCircularTypes(spec.types)
+
   chunks.push(fileHeader(spec))
   chunks.push("import { z } from 'zod'")
   chunks.push('')
-
-  // --- Collect names so we can topologically reference them ----------------
-  // We emit schemas lazily via z.lazy() for forward-referenced types,
-  // but for simplicity we rely on JS hoisting of `const` in the same scope
-  // being fine if consumers use the schemas after module evaluation.
-  // For truly circular refs users should wrap in z.lazy — we emit plain
-  // references here because most OpenAPI specs are DAG-structured.
 
   // --- Named type schemas -------------------------------------------------
   for (const [name, type] of spec.types) {
@@ -54,6 +135,9 @@ export function emitZodSchemas(spec: ApiSpec): string {
   for (const op of spec.operations) {
     chunks.push(emitOperationResponseSchema(op))
   }
+
+  // Reset module-level state
+  _circularTypes = new Set()
 
   return chunks.join('\n')
 }
@@ -211,9 +295,16 @@ function emitZodUnion(type: ApiUnionType): string {
   return `z.union([${members}])`
 }
 
-/** Emit a reference to a named schema variable. */
+/**
+ * Emit a reference to a named schema variable.
+ * Circular refs are wrapped with `z.lazy()` to avoid runtime errors.
+ */
 function emitZodRef(type: ApiRefType): string {
-  return schemaVarName(type.name)
+  const varName = schemaVarName(type.name)
+  if (_circularTypes.has(type.name)) {
+    return `z.lazy(() => ${varName})`
+  }
+  return varName
 }
 
 // ---------------------------------------------------------------------------

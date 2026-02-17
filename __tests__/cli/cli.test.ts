@@ -209,6 +209,21 @@ describe('CLI', () => {
     expect(fs.existsSync(path.join(tmpDir, 'query-keys.ts'))).toBe(false)
   })
 
+  it('suppresses output with --silent flag', () => {
+    const result = execSync(
+      `npx tsx ${cliPath} generate --spec ${specPath} --fetcher fetch --output ${tmpDir} --silent`,
+      { cwd, encoding: 'utf-8' }
+    )
+
+    // Silent mode should produce no stdout
+    expect(result.trim()).toBe('')
+
+    // But files should still be generated
+    expect(fs.existsSync(path.join(tmpDir, 'types.ts'))).toBe(true)
+    expect(fs.existsSync(path.join(tmpDir, 'client.ts'))).toBe(true)
+    expect(fs.existsSync(path.join(tmpDir, 'index.ts'))).toBe(true)
+  })
+
   it('generates with both --zod and --mock flags together', () => {
     execSync(
       `npx tsx ${cliPath} generate --spec ${specPath} --fetcher react-query --output ${tmpDir} --zod --mock`,
