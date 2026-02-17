@@ -1,0 +1,65 @@
+type Query {
+  pets(limit: Int, offset: Int): PetConnection!
+  pet(id: ID!): Pet
+  users: [User!]!
+  user(id: ID!): User
+}
+
+type Mutation {
+  createPet(input: CreatePetInput!): Pet!
+  updatePet(id: ID!, input: UpdatePetInput!): Pet!
+  deletePet(id: ID!): Boolean!
+  createUser(input: CreateUserInput!): User!
+}
+
+type Pet {
+  id: ID!
+  name: String!
+  tag: String
+  status: PetStatus!
+}
+
+enum PetStatus {
+  AVAILABLE
+  PENDING
+  SOLD
+}
+
+type User {
+  id: ID!
+  username: String!
+  email: String!
+}
+
+type PetConnection {
+  edges: [PetEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PetEdge {
+  node: Pet!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+input CreatePetInput {
+  name: String!
+  tag: String
+  status: PetStatus
+}
+
+input UpdatePetInput {
+  name: String
+  tag: String
+  status: PetStatus
+}
+
+input CreateUserInput {
+  username: String!
+  email: String!
+}

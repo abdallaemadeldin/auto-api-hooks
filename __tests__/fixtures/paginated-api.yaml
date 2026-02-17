@@ -1,0 +1,200 @@
+openapi: "3.0.3"
+info:
+  title: Paginated API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:3000/api/v1
+paths:
+  /items:
+    get:
+      summary: List items with cursor-based pagination
+      operationId: listItems
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Cursor for pagination
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          description: Maximum number of items to return
+      responses:
+        "200":
+          description: A paginated list of items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Item"
+                  nextCursor:
+                    type: string
+                    nullable: true
+                  hasMore:
+                    type: boolean
+                required:
+                  - items
+                  - hasMore
+  /products:
+    get:
+      summary: List products with offset-limit pagination
+      operationId: listProducts
+      parameters:
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Number of items to skip
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 25
+          description: Maximum number of items to return
+      responses:
+        "200":
+          description: A paginated list of products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+                  total:
+                    type: integer
+                  offset:
+                    type: integer
+                  limit:
+                    type: integer
+                required:
+                  - data
+                  - total
+                  - offset
+                  - limit
+  /articles:
+    get:
+      summary: List articles with page-number pagination
+      operationId: listArticles
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+      responses:
+        "200":
+          description: A paginated list of articles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Article"
+                  page:
+                    type: integer
+                  totalPages:
+                    type: integer
+                  totalCount:
+                    type: integer
+                required:
+                  - results
+                  - page
+                  - totalPages
+                  - totalCount
+  /comments:
+    get:
+      summary: List all comments (no pagination)
+      operationId: listComments
+      responses:
+        "200":
+          description: A list of all comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+components:
+  schemas:
+    Item:
+      type: object
+      required:
+        - id
+        - name
+        - createdAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    Product:
+      type: object
+      required:
+        - id
+        - title
+        - price
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        price:
+          type: number
+    Article:
+      type: object
+      required:
+        - id
+        - title
+        - body
+        - author
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        body:
+          type: string
+        author:
+          type: string
+    Comment:
+      type: object
+      required:
+        - id
+        - text
+        - userId
+      properties:
+        id:
+          type: integer
+        text:
+          type: string
+        userId:
+          type: integer

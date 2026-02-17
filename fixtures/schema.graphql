@@ -1,0 +1,54 @@
+enum PetStatus {
+  AVAILABLE
+  PENDING
+  SOLD
+}
+
+type Pet {
+  id: ID!
+  name: String!
+  tag: String
+  status: PetStatus
+}
+
+type PetConnection {
+  edges: [PetEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PetEdge {
+  node: Pet!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+input CreatePetInput {
+  name: String!
+  tag: String
+  status: PetStatus
+}
+
+input UpdatePetInput {
+  name: String
+  tag: String
+  status: PetStatus
+}
+
+type Query {
+  pet(id: ID!): Pet
+  pets(first: Int, after: String, status: PetStatus): PetConnection!
+  categories: [String!]!
+}
+
+type Mutation {
+  createPet(input: CreatePetInput!): Pet!
+  updatePet(id: ID!, input: UpdatePetInput!): Pet!
+  deletePet(id: ID!): Boolean!
+}
